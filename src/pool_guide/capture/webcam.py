@@ -37,12 +37,14 @@ class WebcamSource(FrameSource):
                 "using the camera?"
             )
 
-        # Apply tuned V4L2 controls (brightness/contrast/saturation/gain/etc.)
-        # AFTER opening, so they take effect on the live stream.
-        if cfg.capture.controls:
-            from . import camera_controls
-            camera_controls.set_controls(
-                camera_controls.device_path(idx), cfg.capture.controls)
+        # Apply V4L2 controls AFTER opening so they take effect on the live stream.
+        # Always start from auto-exposure + auto-WB (so stale manual settings from a
+        # previous run can't leave the camera stuck dark), then apply any tuned
+        # controls from config on top.
+        from . import camera_controls
+        controls = {"auto_exposure": 3, "white_balance_automatic": 1}
+        controls.update(cfg.capture.controls or {})
+        camera_controls.set_controls(camera_controls.device_path(idx), controls)
         self._i = 0
 
     def read(self) -> Frame | None:
