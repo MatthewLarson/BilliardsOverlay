@@ -33,9 +33,18 @@ from ..display import open_sink
 
 def _accumulate_detections(cfg, src, sink, pattern, dict_name, warmup, samples):
     """Project the pattern; return the camera-detection dict from the frame with
-    the most markers seen. `warmup` frames are discarded so exposure/network settle."""
-    best_centers: dict[int, tuple[float, float]] = {}
+    markers seen ACROSS all sampled frames. `warmup` frames are discarded so
+    exposure/network settle.
+
+    Aggregating across frames (rather than trusting one frame) is what makes a
+    lossy Chromecast + low-res webcam workable: each frame may only show 1-3
+    markers, but over many frames every marker gets seen enough times to place it
+    by median position."""
+    from collections import defaultdict
+
+    acc: dict[int, list[tuple[float, float]]] = defaultdict(list)
     best_frame = None
+    best_count = -1
     total = warmup + samples
     for i in range(total):
         sink.show(pattern)
@@ -48,12 +57,29 @@ def _accumulate_detections(cfg, src, sink, pattern, dict_name, warmup, samples):
         if i < warmup:
             continue
         centers = aruco.detect_marker_centers(frame.rgb, dict_name)
-        if len(centers) > len(best_centers):
-            best_centers = centers
+        for mid, xy in centers.items():
+            acc[mid].append(xy)
+        if len(centers) > best_count:          # keep a frame image for corner-picking
+            best_count = len(centers)
             best_frame = frame.rgb
-        print(f"  frame {i - warmup + 1}/{samples}: {len(centers)} markers", end="\r")
-    print()
-    return best_centers, best_frame
+        print(f"  frame {i - warmup + 1}/{samples}: {len(centers)} this frame, "
+              f"{len(acc)} unique so far")
+
+    # A marker counts if seen in >=2 frames (rejects one-off noise); take its
+    # median position. If that's too strict to reach 4, relax to any sighting.
+    def summarize(min_hits):
+        out = {}
+        for mid, pts in acc.items():
+            if len(pts) >= min_hits:
+                arr = np.array(pts, dtype=float)
+                out[mid] = (float(np.median(arr[:, 0])), float(np.median(arr[:, 1])))
+        return out
+
+    centers = summarize(2)
+    if len(centers) < 4:
+        centers = summarize(1)
+    print(f"Aggregated {len(centers)} unique markers across {samples} frames.")
+    return centers, best_frame
 
 
 def _pick_table_corners(image_bgr) -> np.ndarray | None:
@@ -93,8 +119,8 @@ def main(argv=None) -> int:
     ap.add_argument("--config", default=None, help="path to config.yaml")
     ap.add_argument("--skip-table", action="store_true",
                     help="don't prompt for table corners (camera->projector only)")
-    ap.add_argument("--warmup", type=int, default=15)
-    ap.add_argument("--samples", type=int, default=40)
+    ap.add_argument("--warmup", type=int, default=20)
+    ap.add_argument("--samples", type=int, default=60)
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)

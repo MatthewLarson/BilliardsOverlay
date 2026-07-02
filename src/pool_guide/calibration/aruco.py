@@ -47,7 +47,8 @@ def build_projector_pattern(proj_w: int, proj_h: int, n_markers: int,
     # Cell geometry with margins so markers don't touch screen edges.
     cell_w = proj_w / (cols + 1)
     cell_h = proj_h / (rows + 1)
-    marker_px = int(min(cell_w, cell_h) * 0.6)
+    # Bigger markers survive Chromecast compression + a low-res overhead camera.
+    marker_px = int(min(cell_w, cell_h) * 0.8)
     centers: dict[int, tuple[float, float]] = {}
 
     mid = 0
