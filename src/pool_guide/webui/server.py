@@ -58,8 +58,14 @@ ACTIONS: dict[str, dict] = {
                            "desc": "Empty-table reference for detection."},
     "sensor_node": {"label": "Sensor Streaming", "group": "system", "module": "sensor_node",
                     "roles": ["sensor"],
-                    "desc": "Capture the Kinect and stream to the brain."},
+                    "desc": "Capture the webcam and stream to the brain."},
+    "autotune_camera": {"label": "Auto-Tune Camera", "group": "camera",
+                        "module": "autotune_camera", "roles": ["sensor", "standalone"],
+                        "desc": "Adjust the camera image to best separate balls from the cloth."},
 }
+
+# One-off apps: when they finish on a sensor, streaming should resume.
+_ONE_OFF = {"calibrate", "verify_calibration", "capture_background", "autotune_camera"}
 
 _ENUM_CHOICES = {
     "mode": ["standalone", "distributed"],
@@ -109,6 +115,8 @@ def build_config_sections(cfg) -> list[dict]:
         if dataclasses.is_dataclass(value):
             fields = []
             for sf in dataclasses.fields(value):
+                if isinstance(getattr(value, sf.name), (dict, list)):
+                    continue                 # e.g. capture.controls -- not form-editable
                 key = f"{f.name}.{sf.name}"
                 fields.append({
                     "key": key, "label": sf.name, "type": _field_type(str(sf.type)),
@@ -169,6 +177,7 @@ class ProcessManager:
         self._started = 0.0
         self._log: deque[str] = deque(maxlen=200)
         self._lock = threading.Lock()
+        self.on_exit = None            # callback(action_key) when a process ends
 
     @property
     def running(self) -> bool:
@@ -189,14 +198,20 @@ class ProcessManager:
                 stderr=subprocess.STDOUT, text=True, bufsize=1)
             self._action = action_key
             self._started = time.time()
-            threading.Thread(target=self._pump, args=(self._proc,), daemon=True).start()
+            threading.Thread(target=self._pump, args=(self._proc, action_key),
+                             daemon=True).start()
 
-    def _pump(self, proc):
+    def _pump(self, proc, action_key):
         try:
             for line in proc.stdout:                       # type: ignore[union-attr]
                 self._log.append(line.rstrip())
         except (ValueError, OSError):
             pass
+        if self.on_exit:
+            try:
+                self.on_exit(action_key)
+            except Exception:                              # noqa: BLE001
+                pass
 
     def stop(self) -> None:
         with self._lock:
@@ -398,7 +413,8 @@ class Handler(BaseHTTPRequestHandler):
             cfg = self.node.cfg()
             data = apply_config_updates(cfg, updates)
             (PROJECT_ROOT / "config.yaml").write_text(
-                yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+                yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+                encoding="utf-8")
             return self._json({"ok": True})
         return self._json({"error": "not found"}, 404)
 
@@ -478,6 +494,15 @@ def run_server(config_path, block: bool = True):
     node = Node(config_path)          # Node resolves a None path to the default
     Handler.node = node
     cfg = node.cfg()
+
+    # On a sensor, resume streaming after a one-off app (calibrate/autotune/...) ends.
+    def _resume(action):
+        c = node.cfg()
+        if (node_role(c) == "sensor" and c.webui.auto_start_sensor
+                and action in _ONE_OFF and not node.pm.running):
+            node.pm.start("sensor_node")
+    node.pm.on_exit = _resume
+
     httpd = ThreadingHTTPServer((cfg.webui.host, cfg.webui.port), Handler)
 
     stop = threading.Event()

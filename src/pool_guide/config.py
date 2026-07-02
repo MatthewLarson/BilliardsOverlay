@@ -7,7 +7,7 @@ poking at raw dicts.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,11 @@ class CaptureConfig:
     depth: bool = False
     webcam_index: int = 0
     flip_horizontal: bool = False
+    # V4L2 camera controls applied by WebcamSource on Linux (name -> value), e.g.
+    # {"gain": 40, "brightness": 8, "saturation": 80, "auto_exposure": 1,
+    #  "exposure_time_absolute": 300}. Empty = leave the camera's defaults.
+    # Populated automatically by `apps.autotune_camera`.
+    controls: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -174,3 +179,8 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
         drills=_build(DrillsConfig, raw.get("drills")),
         webui=_build(WebUIConfig, raw.get("webui")),
     )
+
+
+def write_config(cfg: Config, path: str | os.PathLike) -> None:
+    """Serialize a Config back to YAML (used by the web panel and autotune)."""
+    Path(path).write_text(yaml.safe_dump(asdict(cfg), sort_keys=False), encoding="utf-8")

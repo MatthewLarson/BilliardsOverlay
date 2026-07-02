@@ -36,6 +36,13 @@ class WebcamSource(FrameSource):
                 f"Could not open webcam index {idx}. Is another app (e.g. Cheese) "
                 "using the camera?"
             )
+
+        # Apply tuned V4L2 controls (brightness/contrast/saturation/gain/etc.)
+        # AFTER opening, so they take effect on the live stream.
+        if cfg.capture.controls:
+            from . import camera_controls
+            camera_controls.set_controls(
+                camera_controls.device_path(idx), cfg.capture.controls)
         self._i = 0
 
     def read(self) -> Frame | None:
