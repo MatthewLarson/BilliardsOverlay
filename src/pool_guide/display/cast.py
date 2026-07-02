@@ -61,6 +61,9 @@ class CastDisplay(DisplaySink):
         self._target = cfg.display.cast_target.strip()
         self._lock = threading.Lock()
         self._jpeg = self._encode(np.zeros((self.h, self.w, 3), np.uint8))
+        self._clients = 0                 # active MJPEG viewers (the Chromecast)
+        self._clients_lock = threading.Lock()
+        self._last_cast = 0.0
 
         disp = self
         self.url = f"http://{_lan_ip()}:{self._port}/"
@@ -96,6 +99,8 @@ class CastDisplay(DisplaySink):
                 self.send_header("Content-Type",
                                  "multipart/x-mixed-replace; boundary=frame")
                 self.end_headers()
+                with disp._clients_lock:
+                    disp._clients += 1
                 try:
                     while True:
                         data = disp.latest()
@@ -105,13 +110,29 @@ class CastDisplay(DisplaySink):
                         time.sleep(1.0 / disp._fps)
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     return
+                finally:
+                    with disp._clients_lock:
+                        disp._clients -= 1
 
         self._httpd = ThreadingHTTPServer(("0.0.0.0", self._port), Handler)
         threading.Thread(target=self._httpd.serve_forever, daemon=True).start()
         print(f"[cast] overlay page at {self.url}")
         self._catt = None
+        self._stop_watch = threading.Event()
         if self._target:
             self._start_cast()
+            threading.Thread(target=self._watchdog, daemon=True).start()
+
+    def _watchdog(self):
+        """Chromecast/DashCast sessions drop (timeouts, sensor restarts). When no
+        client is pulling the stream, the Chromecast isn't showing our page -- so
+        re-cast. Throttled so a just-started cast has time to connect."""
+        while not self._stop_watch.wait(8.0):
+            with self._clients_lock:
+                n = self._clients
+            if n <= 0 and (time.time() - self._last_cast) > 20:
+                print("[cast] Chromecast not connected -- re-casting")
+                self._start_cast()
 
     # -- overlay frame plumbing --
     def _encode(self, bgr: np.ndarray) -> bytes:
@@ -145,7 +166,13 @@ class CastDisplay(DisplaySink):
         return "catt"
 
     def _start_cast(self):
+        self._last_cast = time.time()
         cmd = self._catt_cmd()
+        if self._catt and self._catt.poll() is None:      # drop the previous attempt
+            try:
+                self._catt.terminate()
+            except Exception:                             # noqa: BLE001
+                pass
         try:
             self._catt = subprocess.Popen(
                 [cmd, "-d", self._target, "cast_site", self.url],
@@ -158,6 +185,7 @@ class CastDisplay(DisplaySink):
             print(f"[cast] could not start casting: {e}")
 
     def close(self) -> None:
+        self._stop_watch.set()
         try:
             self._httpd.shutdown()
         except Exception:                                         # noqa: BLE001
