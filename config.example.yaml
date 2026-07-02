@@ -135,3 +135,15 @@ drills:
   stationary_frames: 6              # frames of stillness before a shot is "done"
   result_hold_frames: 45            # how long to show SUCCESS/MISS
   leave_zone_radius_mm: 150.0        # default cue-ball position-target radius
+
+# ---------------------------------------------------------------------------
+# Web control panel (mobile-friendly). Runs on each node; open http://<node-ip>:<port>.
+# On the sensor (distributed), it registers with the brain at peer_port so the
+# brain's dashboard can see it.
+# ---------------------------------------------------------------------------
+webui:
+  enabled: true
+  host: "0.0.0.0"                     # bind address; 0.0.0.0 = reachable on your LAN
+  port: 8080                          # this node's control-panel port
+  peer_port: 8080                    # the brain's control-panel port (for sensor registration)
+  auto_start_sensor: true            # sensor node begins streaming on boot

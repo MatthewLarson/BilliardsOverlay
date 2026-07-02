@@ -115,6 +115,15 @@ class DrillsConfig:
 
 
 @dataclass
+class WebUIConfig:
+    enabled: bool = True
+    host: str = "0.0.0.0"              # bind address (0.0.0.0 = reachable on the LAN)
+    port: int = 8080                   # control-panel port on this node
+    peer_port: int = 8080             # the brain's control-panel port (sensor registers here)
+    auto_start_sensor: bool = True     # sensor node: begin streaming automatically
+
+
+@dataclass
 class Config:
     mode: str = "standalone"           # standalone | distributed
     capture: CaptureConfig = field(default_factory=CaptureConfig)
@@ -125,6 +134,7 @@ class Config:
     physics: PhysicsConfig = field(default_factory=PhysicsConfig)
     controls: ControlsConfig = field(default_factory=ControlsConfig)
     drills: DrillsConfig = field(default_factory=DrillsConfig)
+    webui: WebUIConfig = field(default_factory=WebUIConfig)
 
 
 def _build(cls, data: dict[str, Any] | None):
@@ -158,4 +168,5 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
         physics=_build(PhysicsConfig, raw.get("physics")),
         controls=_build(ControlsConfig, raw.get("controls")),
         drills=_build(DrillsConfig, raw.get("drills")),
+        webui=_build(WebUIConfig, raw.get("webui")),
     )

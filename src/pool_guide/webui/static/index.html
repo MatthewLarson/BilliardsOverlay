@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1512" />
+  <title>Pool Guide</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🎱</span>
+      <div>
+        <div class="brand-title">Pool Guide</div>
+        <div class="brand-sub" id="brandSub">connecting…</div>
+      </div>
+    </div>
+    <div class="node-chip" id="nodeChip">
+      <span class="dot" id="statusDot"></span>
+      <span id="roleLabel">—</span>
+    </div>
+  </header>
+
+  <main id="view"><div class="loading">Loading…</div></main>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="tab active" data-tab="home"><span>🏠</span>Home</button>
+    <button class="tab" data-tab="play"><span>🎯</span>Play</button>
+    <button class="tab" data-tab="train"><span>🏋️</span>Train</button>
+    <button class="tab" data-tab="calibrate"><span>🎚️</span>Calibrate</button>
+    <button class="tab" data-tab="setup"><span>⚙️</span>Setup</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

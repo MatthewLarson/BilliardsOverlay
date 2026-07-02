@@ -54,6 +54,27 @@ camera on its own. For development on Windows with no Kinect, use
 
 ---
 
+## Web control panel (easiest way to drive it)
+
+Run the **mobile-friendly control panel** on each node and manage everything from
+your phone — no terminal needed:
+
+```bash
+python -m pool_guide.apps.webui        # then open http://<node-ip>:8080
+```
+
+The page adapts to the node's role (standalone / brain / sensor) from
+`config.yaml`. From it you can edit any config option, start/stop/restart the
+games and drills, and follow a **guided calibration wizard** — including tapping
+the four table corners on a snapshot straight from your phone. On the brain, the
+dashboard lists any sensor nodes that have checked in; if a node has never been
+calibrated it walks you through it. Full walkthrough in
+[SETUP.md](SETUP.md#6b-web-control-panel).
+
+The per-app commands below still work — they're what the panel launches for you.
+
+---
+
 ## Phase 0: calibrate the projector to the table
 
 Mount the Kinect and projector on the ceiling, both pointing straight down and

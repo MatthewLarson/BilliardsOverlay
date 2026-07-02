@@ -24,6 +24,10 @@ dev = ["pytest>=7"]
 pool-calibrate = "pool_guide.apps.calibrate:main"
 pool-verify = "pool_guide.apps.verify_calibration:main"
 pool-sensor-node = "pool_guide.apps.sensor_node:main"
+pool-webui = "pool_guide.apps.webui:main"
+
+[tool.setuptools.package-data]
+pool_guide = ["webui/static/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

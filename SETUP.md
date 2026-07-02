@@ -238,10 +238,50 @@ If the fullscreen window lands on the wrong screen, drag it over once, or adjust
 
 ---
 
+## 6b. Web control panel
+
+The easiest way to run everything is the built‑in **web control panel** — a
+mobile‑friendly page served on each node. Start it and leave it running:
+
+```bash
+python -m pool_guide.apps.webui         # on each node (standalone / brain / sensor)
+```
+
+Open **`http://<node-ip>:<port>`** (default port `8080`) from your phone or
+laptop on the same network. The page adapts to that node's role from
+`config.yaml`. From it you can:
+
+- **Setup** — edit any config option (a form generated from the config) and save
+  it back to `config.yaml`.
+- **Calibrate** — a guided wizard: it checks that the required nodes are present,
+  runs the automatic camera→projector step, and lets you **tap the four table
+  corners** on a snapshot from your phone to finish calibration. If the node has
+  never been calibrated, the panel prompts you here first.
+- **Play / Train** — start Aim Assist, Shot Predictor, Best Shot, or a drill;
+  stop or restart what's running.
+- **Dashboard** — node status, calibration state, live logs, and (on the brain)
+  the list of sensor nodes that have checked in.
+
+The sensor node auto‑registers with the brain (`webui.peer_port`) and, in
+distributed mode, begins streaming on boot (`webui.auto_start_sensor`). The panel
+is a convenience layer over the same commands in §7 — you can always fall back to
+the terminal.
+
+> **Distributed corner‑marking:** the brain grabs its snapshot from the sensor's
+> camera stream, so the sensor node must be running/streaming when you mark the
+> corners (the wizard tells you if it can't get a frame).
+
+Ports 8080 (and the ZeroMQ 5555/5556 in distributed mode) must be allowed through
+any firewall on the nodes.
+
+---
+
 ## 7. Bring-up sequence (do these in order)
 
-For distributed mode, first start the **sensor node on the Pi** and leave it
-running; then run each app **on the PC**:
+You can do all of this from the **web control panel** (§6b) instead of the
+terminal — the commands below are what it runs. For distributed mode, first start
+the **sensor node on the Pi** and leave it running; then run each app **on the
+PC**:
 
 ```bash
 # On the Pi:
