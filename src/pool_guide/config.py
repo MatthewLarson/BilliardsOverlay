@@ -68,8 +68,8 @@ class VisionConfig:
     max_ball_radius_px: int = 40
     radius_tolerance: float = 0.45            # +/- around expected radius when scale is known
     min_circularity: float = 0.6
-    felt_hue_tolerance: int = 14              # +/- hue band treated as felt
-    min_saturation: int = 20                  # ignore near-gray pixels when finding felt (low: army-green cloth)
+    felt_hue_tolerance: int = 16              # +/- hue band treated as felt
+    min_saturation: int = 10                  # low: army-green cloth is very desaturated
     min_value: int = 16                       # ignore near-black (pockets/shadows); low for dim tables
     table_erode_px: int = 10                  # shrink the felt mask to stay off rails/pockets
     tracker_max_dist_px: int = 40             # max centroid jump to keep the same ball id

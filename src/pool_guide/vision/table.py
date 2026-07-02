@@ -65,15 +65,17 @@ def _dominant_felt_hue(hsv: np.ndarray, min_s: int, min_v: int) -> int:
     dark -- important on dim tables where absolute S/V thresholds would reject it.
     """
     h = hsv[..., 0]
-    s = hsv[..., 1].astype(np.float32)
+    s = hsv[..., 1]
     v = hsv[..., 2]
     valid = (s >= min_s) & (v >= min_v)
     if int(np.count_nonzero(valid)) < 200:          # dim/desaturated: relax thresholds
-        valid = (s >= max(8, min_s // 2)) & (v >= max(6, min_v // 2))
+        valid = (s >= max(6, min_s // 2)) & (v >= max(6, min_v // 2))
     if not valid.any():
         valid = np.ones(h.shape, dtype=bool)
+    # Count by AREA (not saturation-weighted): the felt is the largest coloured
+    # region, so it wins even though it's less saturated than the wooden rails.
     hist = np.zeros(180, np.float64)
-    np.add.at(hist, h[valid].ravel().astype(np.intp), s[valid].ravel())
+    np.add.at(hist, h[valid].ravel().astype(np.intp), 1.0)
     # smooth the circular hue histogram so noise doesn't split the felt peak
     wrapped = np.concatenate([hist[-3:], hist, hist[:3]])
     hist = np.convolve(wrapped, np.ones(5) / 5, "same")[3:-3]

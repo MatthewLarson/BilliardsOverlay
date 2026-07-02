@@ -37,15 +37,24 @@ def _open_display(cfg):
     return LocalDisplay(cfg, fullscreen=(cfg.display.sink == "projector"))
 
 
-def _overlay_loop(rx: Receiver, display, stop: threading.Event):
-    """Continuously pull overlays from the brain and show them."""
-    blank = None
+def _overlay_loop(rx: Receiver, display, stop: threading.Event, blank):
+    """Pull overlays from the brain and show them. When none arrive for a couple
+    of seconds (idle / between apps), project solid black -- a frozen last frame
+    (e.g. the calibration pattern) would otherwise contaminate ball detection."""
+    import time
+    last = time.time()
+    blanked = False
     while not stop.is_set():
         got = rx.recv_image()
         if got is None:
+            if not blanked and time.time() - last > 2.0:
+                display.show(blank)
+                blanked = True
             continue
         img, _index, _depth = got
         display.show(img)
+        last = time.time()
+        blanked = False
         if display.poll_key() in (27, ord("q")):
             stop.set()
 
@@ -67,8 +76,10 @@ def main(argv=None) -> int:
     overlay_rx = Receiver(port=cfg.network.overlay_port, host=cfg.network.brain_host,
                           bind=False, timeout_ms=1000)
 
+    blank = np.zeros((cfg.display.height, cfg.display.width, 3), np.uint8)
     stop = threading.Event()
-    t = threading.Thread(target=_overlay_loop, args=(overlay_rx, display, stop), daemon=True)
+    t = threading.Thread(target=_overlay_loop, args=(overlay_rx, display, stop, blank),
+                         daemon=True)
     t.start()
 
     print(f"Sensor node streaming to brain at {cfg.network.brain_host} "
