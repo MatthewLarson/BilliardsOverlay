@@ -19,8 +19,10 @@ to casting, not this code.
 """
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -131,15 +133,27 @@ class CastDisplay(DisplaySink):
         return -1
 
     # -- catt casting --
+    @staticmethod
+    def _catt_cmd() -> str:
+        """Resolve catt next to this interpreter (the venv), since a systemd
+        service's PATH usually doesn't include the venv's bin directory."""
+        bindir = os.path.dirname(sys.executable)
+        for name in ("catt", "catt.exe"):
+            p = os.path.join(bindir, name)
+            if os.path.exists(p):
+                return p
+        return "catt"
+
     def _start_cast(self):
+        cmd = self._catt_cmd()
         try:
             self._catt = subprocess.Popen(
-                ["catt", "-d", self._target, "cast_site", self.url],
+                [cmd, "-d", self._target, "cast_site", self.url],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"[cast] casting {self.url} -> Chromecast '{self._target}'")
+            print(f"[cast] casting {self.url} -> Chromecast '{self._target}' (via {cmd})")
         except FileNotFoundError:
-            print("[cast] `catt` not found -- install it (pip install catt) or cast "
-                  f"the page manually: {self.url}")
+            print(f"[cast] catt not found at {cmd} -- pip install catt, or cast the "
+                  f"page manually: {self.url}")
         except Exception as e:                                    # noqa: BLE001
             print(f"[cast] could not start casting: {e}")
 
