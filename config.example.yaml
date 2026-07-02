@@ -1,0 +1,137 @@
+# Pool Guide configuration.
+# Copy to config.yaml and edit for your setup:  cp config.example.yaml config.yaml
+#
+# Two topologies, selected by `mode`:
+#
+#   standalone  -> one machine captures, processes, and projects.
+#                  Use this for a Pi-only rig OR a laptop with the Kinect
+#                  plugged into it directly.
+#
+#   distributed -> the Pi runs a lightweight "sensor node" (capture + display)
+#                  and streams frames over the network to a "brain" (your PC)
+#                  which does vision + physics and streams the overlay back.
+
+mode: standalone           # standalone | distributed
+
+# ---------------------------------------------------------------------------
+# Which capture source to read frames from.
+#   kinect_v1  -> Xbox 360 Kinect via libfreenect (real rig)
+#   webcam     -> any UVC camera / built-in cam (dev without a Kinect)
+#   synthetic  -> a generated fake top-down table (dev with no hardware at all)
+#   network    -> receive frames from a remote sensor node (brain side, distributed)
+# ---------------------------------------------------------------------------
+capture:
+  source: synthetic        # kinect_v1 | webcam | synthetic | network
+  width: 640
+  height: 480
+  fps: 30
+  depth: false             # kinect_v1 only: also pull the depth stream (for cue tracking, Phase 2)
+  webcam_index: 0          # webcam only
+  flip_horizontal: false   # mirror correction if the camera image is flipped
+
+# ---------------------------------------------------------------------------
+# Where the rendered overlay goes.
+#   projector -> local fullscreen window on the given display (real rig / standalone)
+#   window    -> normal resizable window (dev)
+#   network   -> send the overlay to a remote sensor node (brain side, distributed)
+# ---------------------------------------------------------------------------
+display:
+  sink: window             # projector | window | network
+  monitor: 1               # projector only: which monitor index is the projector
+  width: 1280              # projector native resolution
+  height: 720
+
+# ---------------------------------------------------------------------------
+# Networking (only used when mode: distributed).
+# On the sensor node (Pi): set `role: sensor` and point `brain_host` at the PC.
+# On the brain (PC):       set `role: brain`  and leave brain_host empty.
+# ---------------------------------------------------------------------------
+network:
+  role: sensor             # sensor | brain
+  brain_host: "192.168.1.50"
+  frame_port: 5555         # sensor -> brain (camera frames)
+  overlay_port: 5556       # brain  -> sensor (rendered overlay)
+  jpeg_quality: 80         # compress frames before sending to save bandwidth
+
+# ---------------------------------------------------------------------------
+# Calibration output. Written by apps/calibrate.py, read by everything else.
+# ---------------------------------------------------------------------------
+calibration:
+  path: "calibration.json"
+  # Physical table playing surface in millimetres (8ft table ~ 2540 x 1270 mm cloth).
+  # Used to map warped pixels to real-world distances for the physics engine later.
+  table_length_mm: 2540
+  table_width_mm: 1270
+  # ArUco settings for the projected calibration pattern.
+  aruco_dict: "DICT_4X4_50"
+  marker_count: 12         # markers spread across the projected field
+
+# ---------------------------------------------------------------------------
+# Ball detection (Phase 1). Detection adapts to your felt color automatically,
+# so you rarely need to touch these -- tune only if detection is noisy.
+# ---------------------------------------------------------------------------
+vision:
+  background_path: "background.jpg"   # optional empty-table reference frame
+  ball_diameter_mm: 57.15             # regulation 2.25" ball; sets expected px radius
+  min_ball_radius_px: 5               # used only when no table->mm calibration exists
+  max_ball_radius_px: 40
+  radius_tolerance: 0.45              # +/- around expected radius when scale is known
+  min_circularity: 0.6                # 1.0 = perfect circle; lower accepts rougher blobs
+  felt_hue_tolerance: 12              # hue band around detected felt color to mask out
+  min_saturation: 40                  # ignore washed-out pixels when locating felt
+  min_value: 40                       # ignore near-black (pockets/shadows)
+  table_erode_px: 10                  # shrink felt mask inward to avoid rails/pockets
+  tracker_max_dist_px: 40             # max centroid jump to keep a ball's id stable
+  use_background_subtraction: false   # prefer background diff when background_path exists
+  # Cue detection (Phase 2)
+  cue_min_length_frac: 0.15           # min cue line length vs frame diagonal
+  cue_canny_lo: 50
+  cue_canny_hi: 150
+  cue_merge_angle_deg: 7.0            # merge collinear line fragments within this angle...
+  cue_merge_dist_px: 25.0             # ...and this perpendicular distance
+  cue_max_ball_dist_px: 60.0          # cue line must pass this near the cue ball to count
+  # Aim preview (Phase 2 -- geometry only; physics comes in Phase 3)
+  aim_max_bounces: 3                  # cushion reflections previewed for the cue path
+  aim_show_object_dir: true           # draw the struck ball's predicted direction
+
+# ---------------------------------------------------------------------------
+# Physics engine (Phase 3). `simple` is a built-in numpy simulator that runs
+# anywhere (incl. Python 3.14 and the Pi). `pooltool` is a higher-fidelity
+# optional backend that needs Python <=3.12 + panda3d -- see README.
+# ---------------------------------------------------------------------------
+physics:
+  engine: simple                      # simple | pooltool
+  ball_diameter_mm: 57.15
+  max_speed_mmps: 4200.0              # cue-ball speed at strength = 1.0
+  friction_decel: 900.0              # rolling deceleration mm/s^2 (tune to your cloth)
+  restitution_ball: 0.96
+  restitution_cushion: 0.80
+  dt: 0.001
+  max_time: 12.0
+  stop_speed: 6.0
+  pocket_radius_mm: 62.0
+  follow_draw_gain: 0.7              # vertical english effect on the cue ball
+  side_throw_deg: 5.0                # object-ball throw at full side english
+  sample_every: 8
+
+# ---------------------------------------------------------------------------
+# Projected shot controls (Phase 3). Adjust with the keyboard while aiming:
+#   [ ]  strength down/up      a d  side english      w s  follow/draw      c  centre
+# ---------------------------------------------------------------------------
+controls:
+  strength: 0.5                       # initial strength 0..1
+  strength_step: 0.05
+  english_step: 0.1
+  ui_scale: 1.0
+
+# ---------------------------------------------------------------------------
+# Practice drills + coaching (Phase 5). The projector draws where to place the
+# balls and the target; the vision system scores each attempt and tracks stats.
+# ---------------------------------------------------------------------------
+drills:
+  progress_path: "drill_progress.json"
+  place_tol_mm: 70.0                  # how close a ball must be to its spot to start
+  motion_thresh_mm: 8.0              # per-frame movement counted as "moving"
+  stationary_frames: 6              # frames of stillness before a shot is "done"
+  result_hold_frames: 45            # how long to show SUCCESS/MISS
+  leave_zone_radius_mm: 150.0        # default cue-ball position-target radius

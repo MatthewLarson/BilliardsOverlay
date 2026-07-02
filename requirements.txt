@@ -1,0 +1,12 @@
+# Core (needed on every machine that does capture, calibration, or display)
+numpy>=1.24
+opencv-contrib-python>=4.8   # 'contrib' build required for cv2.aruco
+pyyaml>=6.0
+pyzmq>=25.0                  # frame/overlay streaming for distributed mode
+
+# Physics engine (brain machine only; added in Phase 3)
+# pooltool-billiards>=0.5
+
+# Kinect v1 driver (sensor machine only; install from system package, see README)
+# freenect   # Python bindings for libfreenect -- NOT pip-installable on Windows.
+             # On the Pi/Linux brain, build libfreenect with the Python wrapper.

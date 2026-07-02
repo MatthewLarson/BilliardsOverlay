@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pool-guide"
+version = "0.0.1"
+description = "Projector + camera augmented-reality aiming and training assistant for a pool table"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-contrib-python>=4.8",
+    "pyyaml>=6.0",
+    "pyzmq>=25.0",
+]
+
+[project.optional-dependencies]
+# Physics engine, added when Phase 3 lands (brain machine only).
+physics = ["pooltool-billiards>=0.5"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+pool-calibrate = "pool_guide.apps.calibrate:main"
+pool-verify = "pool_guide.apps.verify_calibration:main"
+pool-sensor-node = "pool_guide.apps.sensor_node:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
