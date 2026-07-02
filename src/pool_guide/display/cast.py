@@ -64,6 +64,7 @@ class CastDisplay(DisplaySink):
         self._clients = 0                 # active MJPEG viewers (the Chromecast)
         self._clients_lock = threading.Lock()
         self._last_cast = 0.0
+        self._casting = False
 
         disp = self
         self.url = f"http://{_lan_ip()}:{self._port}/"
@@ -130,7 +131,7 @@ class CastDisplay(DisplaySink):
         while not self._stop_watch.wait(8.0):
             with self._clients_lock:
                 n = self._clients
-            if n <= 0 and (time.time() - self._last_cast) > 20:
+            if n <= 0 and not self._casting and (time.time() - self._last_cast) > 15:
                 print("[cast] Chromecast not connected -- re-casting")
                 self._start_cast()
 
@@ -166,23 +167,32 @@ class CastDisplay(DisplaySink):
         return "catt"
 
     def _start_cast(self):
-        self._last_cast = time.time()
+        """(Re)cast in a background thread. Always `stop` first: cast_site HANGS if
+        a previous DashCast session is wedged, but stop-then-cast reconnects."""
+        if self._casting:
+            return
+        self._casting = True
         cmd = self._catt_cmd()
-        if self._catt and self._catt.poll() is None:      # drop the previous attempt
-            try:
-                self._catt.terminate()
-            except Exception:                             # noqa: BLE001
-                pass
-        try:
-            self._catt = subprocess.Popen(
-                [cmd, "-d", self._target, "cast_site", self.url],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"[cast] casting {self.url} -> Chromecast '{self._target}' (via {cmd})")
-        except FileNotFoundError:
-            print(f"[cast] catt not found at {cmd} -- pip install catt, or cast the "
-                  f"page manually: {self.url}")
-        except Exception as e:                                    # noqa: BLE001
-            print(f"[cast] could not start casting: {e}")
+
+        def worker():
+            def run(args, t):
+                try:
+                    subprocess.run([cmd, "-d", self._target, *args], timeout=t,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return True
+                except FileNotFoundError:
+                    print(f"[cast] catt not found at {cmd} -- pip install catt, or "
+                          f"open {self.url} on the projector manually.")
+                    return None
+                except Exception:                                 # noqa: BLE001 (timeout etc.)
+                    return False
+            print(f"[cast] casting {self.url} -> '{self._target}'")
+            if run(["stop"], 15) is not None:
+                run(["cast_site", self.url], 40)
+            self._last_cast = time.time()
+            self._casting = False
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def close(self) -> None:
         self._stop_watch.set()
