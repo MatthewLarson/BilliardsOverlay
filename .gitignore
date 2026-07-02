@@ -5,6 +5,7 @@ config.yaml
 calibration.json
 background.jpg
 drill_progress.json
+.env
 .pytest_cache/
 *.egg-info/
 build/

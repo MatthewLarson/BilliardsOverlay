@@ -36,10 +36,15 @@ capture:
 #   network   -> send the overlay to a remote sensor node (brain side, distributed)
 # ---------------------------------------------------------------------------
 display:
-  sink: window             # projector | window | network
+  sink: window             # projector | window | network | cast
   monitor: 1               # projector only: which monitor index is the projector
   width: 1280              # projector native resolution
   height: 720
+  # Chromecast casting (sink: cast) -- serves the overlay as a web page the
+  # Chromecast (plugged into the projector) displays. catt casts the page URL.
+  cast_port: 8090
+  cast_target: ""          # Chromecast friendly name or IP (blank = cast manually)
+  cast_fps: 20
 
 # ---------------------------------------------------------------------------
 # Networking (only used when mode: distributed).

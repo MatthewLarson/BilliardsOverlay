@@ -13,8 +13,8 @@ Run on the Pi:
 Requires config.yaml with:
     mode: distributed
     network: { role: sensor, brain_host: <PC ip> }
-    capture: { source: kinect_v1 }     # or webcam for testing
-    display: { sink: projector }
+    capture: { source: webcam }        # or kinect_v1
+    display: { sink: cast }            # cast (Chromecast) or projector (HDMI)
 """
 from __future__ import annotations
 
@@ -25,11 +25,19 @@ import numpy as np
 
 from ..capture import open_source
 from ..config import load_config
-from ..display.local import LocalDisplay
 from ..net.protocol import Receiver, Sender
 
 
-def _overlay_loop(rx: Receiver, display: LocalDisplay, stop: threading.Event):
+def _open_display(cfg):
+    """The sensor's own display: a Chromecast page (cast) or a local window/projector."""
+    if cfg.display.sink == "cast":
+        from ..display.cast import CastDisplay
+        return CastDisplay(cfg)
+    from ..display.local import LocalDisplay
+    return LocalDisplay(cfg, fullscreen=(cfg.display.sink == "projector"))
+
+
+def _overlay_loop(rx: Receiver, display, stop: threading.Event):
     """Continuously pull overlays from the brain and show them."""
     blank = None
     while not stop.is_set():
@@ -51,8 +59,8 @@ def main(argv=None) -> int:
     if cfg.mode != "distributed" or cfg.network.role != "sensor":
         print("WARNING: sensor_node expects mode: distributed, network.role: sensor")
 
-    src = open_source(cfg)                     # local Kinect/webcam
-    display = LocalDisplay(cfg, fullscreen=(cfg.display.sink == "projector"))
+    src = open_source(cfg)                     # local webcam / Kinect
+    display = _open_display(cfg)               # projector (HDMI) or cast (Chromecast)
 
     # Sensor connects out to the brain, which binds both ports.
     frame_tx = Sender(port=cfg.network.frame_port, host=cfg.network.brain_host, bind=False)

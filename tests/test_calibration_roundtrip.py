@@ -50,6 +50,7 @@ def test_cam2table_homography():
 
 def test_synthetic_source_produces_frames():
     cfg = load_config()
+    cfg.mode = "standalone"  # hermetic: ignore any ambient distributed config.yaml
     cfg.capture.source = "synthetic"
     src = open_source(cfg)
     f1 = src.read()

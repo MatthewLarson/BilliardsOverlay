@@ -27,10 +27,14 @@ class CaptureConfig:
 
 @dataclass
 class DisplayConfig:
-    sink: str = "window"               # projector | window | network
+    sink: str = "window"               # projector | window | network | cast
     monitor: int = 1
     width: int = 1280
     height: int = 720
+    # --- Chromecast casting (sink: cast) ---
+    cast_port: int = 8090              # local page/MJPEG stream port on the node
+    cast_target: str = ""              # Chromecast name or IP for catt (blank = don't auto-cast)
+    cast_fps: int = 20                 # overlay stream frame rate
 
 
 @dataclass

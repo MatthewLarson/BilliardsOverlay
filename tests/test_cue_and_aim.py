@@ -16,6 +16,7 @@ def _angle_between(d1, d2):
 
 def test_cue_direction_recovered_from_synthetic():
     cfg = load_config()
+    cfg.mode = "standalone"  # hermetic: ignore any ambient distributed config.yaml
     cfg.capture.source = "synthetic"
     src = open_source(cfg)
     det = CueDetector(cfg.vision)

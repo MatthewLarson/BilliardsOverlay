@@ -15,6 +15,9 @@ def open_sink(cfg: Config) -> DisplaySink:
     if sink in ("window", "projector"):
         from .local import LocalDisplay
         return LocalDisplay(cfg, fullscreen=(sink == "projector"))
+    if sink == "cast":
+        from .cast import CastDisplay
+        return CastDisplay(cfg)
     if sink == "network":
         from .network_sink import NetworkDisplay
         return NetworkDisplay(cfg)

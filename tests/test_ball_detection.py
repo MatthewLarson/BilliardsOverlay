@@ -13,6 +13,7 @@ from pool_guide.vision import BallDetector, SimpleTracker, build_table_mask
 
 def _frame():
     cfg = load_config()
+    cfg.mode = "standalone"  # hermetic: ignore any ambient distributed config.yaml
     cfg.capture.source = "synthetic"
     src = open_source(cfg)
     # advance a few frames so ball positions are well inside the felt
@@ -42,6 +43,7 @@ def test_detects_four_balls_and_rejects_pockets():
 
 def test_tracker_keeps_ids_stable_across_frames():
     cfg = load_config()
+    cfg.mode = "standalone"  # hermetic: ignore any ambient distributed config.yaml
     cfg.capture.source = "synthetic"
     src = open_source(cfg)
     detector = BallDetector(cfg.vision, calib=None)

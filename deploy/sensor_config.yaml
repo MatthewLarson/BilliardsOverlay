@@ -1,0 +1,38 @@
+# Sensor-node config template for the Raspberry Pi (webcam + Chromecast).
+# provision_pi.py copies this to the Pi as config.yaml, filling in BRAIN_HOST and
+# the Chromecast target from .env. Not secret -- safe to commit.
+mode: distributed
+
+capture:
+  source: webcam           # USB webcam plugged into the Pi
+  webcam_index: 0
+  width: 640
+  height: 480
+  fps: 30
+  flip_horizontal: false
+
+display:
+  sink: cast               # projector is driven by a Chromecast, not HDMI
+  width: 1280              # overlay/cast page resolution
+  height: 720
+  cast_port: 8090
+  cast_target: ""          # Chromecast name or IP (filled from .env CHROMECAST)
+  cast_fps: 20
+
+network:
+  role: sensor
+  brain_host: "192.168.4.162"   # the brain PC (filled from .env BRAIN_HOST)
+  frame_port: 5555
+  overlay_port: 5556
+  jpeg_quality: 80
+
+calibration:
+  table_length_mm: 2540
+  table_width_mm: 1270
+
+webui:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+  peer_port: 8080          # the brain's control-panel port (for registration)
+  auto_start_sensor: true
