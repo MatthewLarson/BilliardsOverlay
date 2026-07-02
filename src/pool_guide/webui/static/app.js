@@ -27,7 +27,12 @@ async function refresh() {
   try {
     STATE = await getJSON("/api/status");
     paintChip();
-    if (["home", "play", "train", "calibrate"].includes(TAB)) render();
+    // Only auto-rebuild views that show live data (home status, calibrate steps),
+    // and never while a modal is open (corner picker / logs) or the user is typing
+    // -- otherwise the 3.5s poll wipes interactive elements mid-use.
+    const busy = document.querySelector(".modal") ||
+      ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement && document.activeElement.tagName);
+    if (!busy && (TAB === "home" || TAB === "calibrate")) render();
     markCalTab();
   } catch (e) {
     $("#statusDot").className = "dot err";
@@ -50,6 +55,8 @@ function markCalTab() {
 
 /* ---------- tabs ---------- */
 document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".modal").forEach(m => m.remove());   // close logs/picker
+  if (showLogs._t) clearInterval(showLogs._t);
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   b.classList.add("active"); TAB = b.dataset.tab; render();
 }));
@@ -108,8 +115,8 @@ function renderHome() {
 }
 
 window.gotoTab = (t) => { document.querySelector(`.tab[data-tab="${t}"]`).click(); };
-window.doStop = async () => { await post("/api/action/stop"); toast("Stopped"); refresh(); };
-window.doRestart = async () => { await post("/api/action/restart"); toast("Restarted"); refresh(); };
+window.doStop = async () => { await post("/api/action/stop"); toast("Stopped"); await refresh(); render(); };
+window.doRestart = async () => { await post("/api/action/restart"); toast("Restarted"); await refresh(); render(); };
 window.showLogs = () => {
   // A modal on <body> so the 3.5s status poll (which re-renders #view) can't wipe it.
   if (document.getElementById("logsModal")) return;
@@ -176,7 +183,7 @@ function drillPicker() {
 window.startAction = async (key) => {
   const body = { action: key };
   if (key === "drills") { const s = $("#drillSel"); if (s && s.value) body.value = s.value; }
-  try { await post("/api/action/start", body); toast(`Started ${key}`); refresh(); }
+  try { await post("/api/action/start", body); toast(`Started ${key}`); await refresh(); render(); }
   catch (e) { toast(e.message, true); }
 };
 const renderPlay = () => renderGroup("play", "Play a game", "Pick a mode. Starting one stops whatever is running.");
@@ -217,7 +224,6 @@ function renderCalibrate() {
     <h4>Mark table corners</h4>
     <p>Tap the four inside cushion corners — <b>top-left, top-right, bottom-right, bottom-left</b> — on a snapshot.</p>
     <button class="btn ${s3 ? "secondary" : ""} small" ${!s2 ? "disabled" : ""} onclick="openCornerPicker()">${s3 ? "Redo corners" : "Mark corners"}</button>
-    <div id="pickerHost"></div>
   </div></div>`;
 
   // Step 4 — verify
@@ -233,29 +239,41 @@ function renderCalibrate() {
 }
 
 window.openCornerPicker = async () => {
-  const host = $("#pickerHost");
-  host.innerHTML = `<p class="desc">Loading snapshot…</p>`;
+  // Body-level modal so the status poll can't wipe it mid-use.
+  if (document.getElementById("pickerModal")) return;
   cornerPts = [];
+  const m = document.createElement("div");
+  m.id = "pickerModal"; m.className = "modal";
+  m.innerHTML = `<div class="modal-card">
+    <div class="row"><h3>Mark table corners</h3>
+      <button class="btn ghost small" onclick="closePicker()">Cancel</button></div>
+    <div id="pickerBody"><p class="desc">Loading snapshot…</p></div></div>`;
+  document.body.appendChild(m);
   try {
-    // ensure camera is free
-    if (STATE.running) { await post("/api/action/stop"); }
-    const url = "/api/snapshot.jpg?ts=" + Date.now();
-    const resp = await fetch(url);
+    if (STATE.running) { await post("/api/action/stop"); }   // free the camera
+    const resp = await fetch("/api/snapshot.jpg?ts=" + Date.now());
     if (!resp.ok) { const j = await resp.json().catch(() => ({})); throw new Error(j.error || "snapshot failed"); }
-    const blob = await resp.blob();
-    const img = URL.createObjectURL(blob);
-    host.innerHTML = `
+    const img = URL.createObjectURL(await resp.blob());
+    const body = document.getElementById("pickerBody");
+    if (!body) return;   // cancelled while loading
+    body.innerHTML = `
       <div class="picker" id="picker"><img id="snap" src="${img}" alt="table" /></div>
       <p class="desc" id="pickHint">Tap corner 1 of 4: <b>top-left</b></p>
       <div class="btn-row">
         <button class="btn secondary small" onclick="resetCorners()">Reset</button>
         <button class="btn small" id="submitCorners" disabled onclick="submitCorners()">Save corners</button>
       </div>`;
-    $("#picker").addEventListener("click", onPickTap);
+    document.getElementById("picker").addEventListener("click", onPickTap);
   } catch (e) {
-    host.innerHTML = `<p class="desc" style="color:var(--danger)">${esc(e.message)}</p>
-      <p class="desc">${STATE.mode !== "standalone" ? "In distributed mode the sensor must be streaming so the brain can grab a frame." : "Make sure the camera is connected and no app is using it."}</p>`;
+    const body = document.getElementById("pickerBody");
+    if (body) body.innerHTML = `<p class="desc" style="color:var(--danger)">${esc(e.message)}</p>
+      <p class="desc">${STATE.mode !== "standalone" ? "The sensor node must be streaming so the brain can grab a frame." : "Make sure the camera is connected and no app is using it."}</p>`;
   }
+};
+window.closePicker = () => {
+  cornerPts = [];
+  const m = document.getElementById("pickerModal");
+  if (m) m.remove();
 };
 const CORNER_NAMES = ["top-left", "top-right", "bottom-right", "bottom-left"];
 function onPickTap(ev) {
@@ -264,18 +282,23 @@ function onPickTap(ev) {
   const x = (ev.clientX - rect.left) / rect.width * img.naturalWidth;
   const y = (ev.clientY - rect.top) / rect.height * img.naturalHeight;
   cornerPts.push([x, y]);
-  const m = document.createElement("div");
-  m.className = "marker"; m.textContent = cornerPts.length;
-  m.style.left = ((ev.clientX - rect.left) / rect.width * 100) + "%";
-  m.style.top = ((ev.clientY - rect.top) / rect.height * 100) + "%";
-  $("#picker").appendChild(m);
+  const mk = document.createElement("div");
+  mk.className = "marker"; mk.textContent = cornerPts.length;
+  mk.style.left = ((ev.clientX - rect.left) / rect.width * 100) + "%";
+  mk.style.top = ((ev.clientY - rect.top) / rect.height * 100) + "%";
+  $("#picker").appendChild(mk);
   const hint = $("#pickHint");
   if (cornerPts.length < 4) hint.innerHTML = `Tap corner ${cornerPts.length + 1} of 4: <b>${CORNER_NAMES[cornerPts.length]}</b>`;
   else { hint.textContent = "All four set — save to finish."; $("#submitCorners").disabled = false; }
 }
-window.resetCorners = () => { cornerPts = []; openCornerPicker(); };
+window.resetCorners = () => {
+  cornerPts = [];
+  document.querySelectorAll("#picker .marker").forEach(el => el.remove());
+  const h = $("#pickHint"); if (h) h.innerHTML = "Tap corner 1 of 4: <b>top-left</b>";
+  const b = $("#submitCorners"); if (b) b.disabled = true;
+};
 window.submitCorners = async () => {
-  try { await post("/api/calibration/table", { points: cornerPts }); toast("Calibration complete 🎉"); refresh(); }
+  try { await post("/api/calibration/table", { points: cornerPts }); toast("Calibration complete 🎉"); closePicker(); await refresh(); render(); }
   catch (e) { toast(e.message, true); }
 };
 
@@ -302,9 +325,13 @@ function fieldInput(f) {
     return `<div class="toggle" style="margin-bottom:12px"><label class="switch"><input type="checkbox" data-key="${f.key}" data-type="bool" id="${id}" ${f.value ? "checked" : ""}><span class="track"></span></label><span class="lbl" style="margin:0;text-transform:none">${esc(f.label)}</span></div>`;
   }
   if (f.choices) {
+    // Ensure the current value is always a selectable option; otherwise the
+    // browser silently selects the FIRST option and a Save would overwrite the
+    // real value (this is how display.sink can flip to 'projector').
+    const opts = f.choices.includes(f.value) ? f.choices : [f.value, ...f.choices];
     return `<label class="field"><span class="lbl">${esc(f.label)}</span>
       <select class="inp" data-key="${f.key}" data-type="${f.type}" id="${id}">
-        ${f.choices.map(c => `<option ${c === f.value ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>`;
+        ${opts.map(c => `<option value="${esc(c)}" ${c === f.value ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>`;
   }
   const numeric = f.type === "int" || f.type === "float";
   return `<label class="field"><span class="lbl">${esc(f.label)}</span>
