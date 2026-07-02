@@ -45,6 +45,14 @@ def test_apply_config_updates_coerces_types():
     assert data["vision"]["use_background_subtraction"] is True
 
 
+def test_node_handles_none_config():
+    # The systemd service runs `webui` with no --config; Node(None) must resolve
+    # the default config path instead of crashing on Path(None).
+    from pool_guide.webui.server import Node
+    n = Node(None)
+    assert n.status()["role"] in ("standalone", "brain", "sensor")
+
+
 def test_node_role():
     cfg = load_config()
     cfg.mode = "standalone"

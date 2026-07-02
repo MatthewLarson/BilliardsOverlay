@@ -254,7 +254,16 @@ class PeerRegistry:
 
 # --- the node bundles it all together ----------------------------------------
 class Node:
-    def __init__(self, config_path: Path):
+    def __init__(self, config_path=None):
+        # Match load_config's resolution when no explicit path is given (e.g. the
+        # systemd service runs `webui` with no --config).
+        if config_path is None:
+            for cand in (PROJECT_ROOT / "config.yaml", PROJECT_ROOT / "config.example.yaml"):
+                if cand.exists():
+                    config_path = cand
+                    break
+            else:
+                config_path = PROJECT_ROOT / "config.yaml"
         self.config_path = Path(config_path)
         self.pm = ProcessManager(self.config_path)
         self.peers = PeerRegistry()

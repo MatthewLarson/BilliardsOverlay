@@ -22,6 +22,14 @@ from pathlib import Path
 
 import paramiko
 
+# Remote output can contain non-cp1252 characters (piwheels progress, box-drawing).
+# Force UTF-8 so printing them on a Windows console never crashes provisioning.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).resolve().parents[1]
 REPO_URL = "https://github.com/MatthewLarson/BilliardsOverlay.git"
 SERVICE = "pool-webui"
@@ -55,14 +63,16 @@ class Pi:
 
     def run(self, cmd: str, sudo: bool = False, check: bool = True) -> int:
         if sudo:
-            cmd = f"sudo -S -p '' bash -lc {shq(cmd)}"
-            stdin, stdout, stderr = self.client.exec_command(cmd, get_pty=True)
+            full = f"sudo -S -p '' bash -lc {shq(cmd)}"
+            stdin, stdout, stderr = self.client.exec_command(full, get_pty=True)
             stdin.write(self.password + "\n")
             stdin.flush()
         else:
-            stdin, stdout, stderr = self.client.exec_command(f"bash -lc {shq(cmd)}")
+            # merge stderr so progress/errors stream live and encode-safely
+            stdin, stdout, stderr = self.client.exec_command(f"bash -lc {shq(cmd + ' 2>&1')}")
         for line in iter(stdout.readline, ""):
-            print("  " + line.rstrip())
+            sys.stdout.write("  " + line.rstrip() + "\n")
+            sys.stdout.flush()
         rc = stdout.channel.recv_exit_status()
         err = stderr.read().decode(errors="replace").strip()
         if rc != 0 and check:
@@ -130,18 +140,18 @@ def main(argv=None) -> int:
             return 0
 
         print("\n[1/6] System packages ...")
-        pi.run("apt-get update", sudo=True)
-        pi.run("DEBIAN_FRONTEND=noninteractive apt-get install -y "
+        pi.run("apt-get -qq update", sudo=True)
+        pi.run("DEBIAN_FRONTEND=noninteractive apt-get -qq -y install "
                "git python3-venv python3-pip libgl1 libglib2.0-0 v4l-utils", sudo=True)
 
         print("\n[2/6] Clone / update repo ...")
         pi.run(f"if [ -d {pi.app_dir}/.git ]; then cd {pi.app_dir} && git pull; "
                f"else git clone {REPO_URL} {pi.app_dir}; fi")
 
-        print("\n[3/6] Python venv + package + catt ...")
+        print("\n[3/6] Python venv + package + catt (this can take a few minutes) ...")
         pi.run(f"cd {pi.app_dir} && python3 -m venv .venv && "
-               ".venv/bin/pip install -U pip wheel && "
-               ".venv/bin/pip install -e . && .venv/bin/pip install catt")
+               ".venv/bin/pip install -q -U pip wheel && "
+               ".venv/bin/pip install -q -e . && .venv/bin/pip install -q catt")
 
         print("\n[4/6] Write sensor config.yaml ...")
         pi.put(sensor_config(env), f"{pi.app_dir}/config.yaml")
