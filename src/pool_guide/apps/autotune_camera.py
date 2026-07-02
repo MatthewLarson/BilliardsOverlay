@@ -23,10 +23,12 @@ from ..capture import camera_controls
 from ..config import load_config, write_config
 from ..vision.tuning import score_separation
 
-# Keep auto-exposure (so the felt is well-exposed regardless of room brightness)
-# and tune the image-processing controls. Manual exposure is fragile: a fixed
-# value blows out a bright room or blacks out a dim one.
-TUNE_ORDER = ["brightness", "contrast", "saturation", "gamma"]
+# Manual exposure, swept to the room: this camera's auto (aperture priority)
+# gets stuck at stale exposure/gain values and won't re-adapt. Exposure is swept
+# log-spaced (a lit room needs a SHORT exposure), plus gain and the processing
+# controls. The score keeps the felt at a good mid-tone.
+TUNE_ORDER = ["exposure_time_absolute", "gain", "brightness",
+              "contrast", "saturation", "gamma"]
 
 
 def _open(idx):
@@ -80,20 +82,26 @@ def main(argv=None) -> int:
         print(f"Could not open camera {idx}. Is the sensor node still using it?")
         return 2
 
-    # Auto-exposure + auto white-balance keep the felt well-exposed; reset the
-    # image-processing controls to their defaults for a clean baseline.
     ranges = camera_controls.list_control_ranges(device)
-    base_ctrls = {"auto_exposure": 3, "white_balance_automatic": 1}
-    for name in TUNE_ORDER:
-        if name in ranges and "default" in ranges[name]:
-            base_ctrls[name] = ranges[name]["default"]
-    camera_controls.set_controls(device, base_ctrls)
-    for _ in range(25):        # warm up: let auto-exposure adapt to the room
-        cap.read()
-    time.sleep(0.8)
     if not ranges:
         print("No V4L2 controls found; cannot tune.")
         return 3
+
+    # Manual exposure + fixed white balance. Start with a SHORT exposure and low
+    # gain (a lit room needs little), processing controls at defaults. The sweep
+    # then finds the exposure that puts the felt at a good mid-tone.
+    base_ctrls = {"auto_exposure": 1, "white_balance_automatic": 1}
+    if "exposure_time_absolute" in ranges:
+        base_ctrls["exposure_time_absolute"] = max(ranges["exposure_time_absolute"]["min"], 60)
+    if "gain" in ranges:
+        base_ctrls["gain"] = ranges["gain"]["min"]
+    for name in ("brightness", "contrast", "saturation", "gamma"):
+        if name in ranges and "default" in ranges[name]:
+            base_ctrls[name] = ranges[name]["default"]
+    camera_controls.set_controls(device, base_ctrls)
+    for _ in range(20):
+        cap.read()
+    time.sleep(0.5)
 
     base = _evaluate(cap, cfg.vision)
     print(f"baseline: score={base['score']:.1f} balls={base.get('balls')} "
@@ -102,11 +110,6 @@ def main(argv=None) -> int:
         f = _grab(cap)
         if f is not None:
             cv2.imwrite(f"{args.save_images}/before.jpg", f)
-    if base["score"] <= -1e5:
-        print("Baseline sees no felt (dark frame / camera not seeing the table). "
-              "Make sure the table is lit and balls are racked, then retry. Not saving.")
-        cap.release()
-        return 4
 
     controls: dict[str, int] = dict(base_ctrls)
     for p in range(args.passes):
@@ -114,7 +117,12 @@ def main(argv=None) -> int:
             if name not in ranges:
                 continue
             lo, hi = ranges[name]["min"], ranges[name]["max"]
-            vals = sorted(set(int(v) for v in np.linspace(lo, hi, args.samples)))
+            if name == "exposure_time_absolute":
+                lo = max(lo, 1)
+            if lo > 0 and hi / lo > 20:        # wide range (e.g. exposure) -> log-spaced
+                vals = sorted(set(int(v) for v in np.geomspace(lo, hi, args.samples)))
+            else:
+                vals = sorted(set(int(v) for v in np.linspace(lo, hi, args.samples)))
             best_v = controls.get(name, ranges[name].get("default", (lo + hi) // 2))
             best_s = None
             for v in vals:
