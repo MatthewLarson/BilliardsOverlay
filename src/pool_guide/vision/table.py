@@ -58,12 +58,25 @@ def px_per_mm(calib: Calibration | None, frame_shape) -> float | None:
 
 
 def _dominant_felt_hue(hsv: np.ndarray, min_s: int, min_v: int) -> int:
-    """Peak hue among reasonably saturated, non-dark pixels = the felt colour."""
-    h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    """The felt colour = the dominant hue, weighted by saturation.
+
+    Weighting hue votes by saturation lets a large but semi-desaturated (army
+    green) felt beat the near-gray floor/rails, and works even when the felt is
+    dark -- important on dim tables where absolute S/V thresholds would reject it.
+    """
+    h = hsv[..., 0]
+    s = hsv[..., 1].astype(np.float32)
+    v = hsv[..., 2]
     valid = (s >= min_s) & (v >= min_v)
+    if int(np.count_nonzero(valid)) < 200:          # dim/desaturated: relax thresholds
+        valid = (s >= max(8, min_s // 2)) & (v >= max(6, min_v // 2))
     if not valid.any():
-        valid = np.ones_like(s, dtype=bool)
-    hist = cv2.calcHist([h], [0], valid.astype(np.uint8), [180], [0, 180])
+        valid = np.ones(h.shape, dtype=bool)
+    hist = np.zeros(180, np.float64)
+    np.add.at(hist, h[valid].ravel().astype(np.intp), s[valid].ravel())
+    # smooth the circular hue histogram so noise doesn't split the felt peak
+    wrapped = np.concatenate([hist[-3:], hist, hist[:3]])
+    hist = np.convolve(wrapped, np.ones(5) / 5, "same")[3:-3]
     return int(np.argmax(hist))
 
 

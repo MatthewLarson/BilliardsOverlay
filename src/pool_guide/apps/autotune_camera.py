@@ -23,10 +23,10 @@ from ..capture import camera_controls
 from ..config import load_config, write_config
 from ..vision.tuning import score_separation
 
-# Keep auto-exposure ON (so the felt stays well-lit like it does while streaming)
-# and tune only the image-processing controls. Forcing manual exposure blacks out
-# the frame if the frozen exposure is short.
-TUNE_ORDER = ["brightness", "contrast", "saturation", "gamma"]
+# Manual exposure so we can brighten a dim table (auto-exposure caps out too
+# dark). Started from a mid value so the baseline isn't black, then swept.
+TUNE_ORDER = ["exposure_time_absolute", "gain", "brightness",
+              "contrast", "saturation", "gamma"]
 
 
 def _open(idx):
@@ -80,11 +80,18 @@ def main(argv=None) -> int:
         print(f"Could not open camera {idx}. Is the sensor node still using it?")
         return 2
 
-    # Keep auto-exposure + auto white-balance so the felt stays lit; reset the
-    # image-processing controls to camera defaults for a clean baseline.
-    base_ctrls = {"auto_exposure": 3, "white_balance_automatic": 1}
+    # Manual exposure + fixed white balance. Start exposure/gain mid-range so the
+    # baseline is visible, processing controls at their defaults.
     ranges = camera_controls.list_control_ranges(device)
-    for name in TUNE_ORDER:
+
+    def _at(name, frac, fallback):
+        r = ranges.get(name)
+        return int(r["min"] + frac * (r["max"] - r["min"])) if r else fallback
+
+    base_ctrls = {"auto_exposure": 1, "white_balance_automatic": 1,
+                  "exposure_time_absolute": _at("exposure_time_absolute", 0.45, 500),
+                  "gain": _at("gain", 0.5, 50)}
+    for name in ("brightness", "contrast", "saturation", "gamma"):
         if name in ranges and "default" in ranges[name]:
             base_ctrls[name] = ranges[name]["default"]
     camera_controls.set_controls(device, base_ctrls)

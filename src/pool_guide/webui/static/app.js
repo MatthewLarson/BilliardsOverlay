@@ -97,10 +97,13 @@ function renderHome() {
     html += `<div class="card"><h3>Sensor nodes</h3>`;
     if (!peers.length) html += `<p class="desc">No sensor has checked in yet. Start the control panel on the Pi (it registers automatically).</p>`;
     else peers.forEach(p => {
+      const port = p.port || 8080;
       html += `<div class="peer"><span class="dot ${p.online ? "ok" : "err"}"></span>
-        <div style="flex:1"><b>${esc(p.hostname || p.host)}</b><div class="desc">${esc(p.host)}:${p.port || ""} · ${p.online ? "online" : "offline " + p.age + "s"}</div></div>
-        <a class="btn ghost small" href="http://${esc(p.host)}:${p.port || 8080}" target="_blank" rel="noopener">Open</a></div>`;
+        <div style="flex:1"><b>${esc(p.hostname || p.host)}</b><div class="desc">${esc(p.host)}:${port} · ${p.online ? "online" : "offline " + p.age + "s"}${p.running ? " · " + esc(p.running.label) : ""}</div></div>
+        <button class="btn ghost small" onclick="tunePeerCamera('${esc(p.host)}',${port})">Tune cam</button>
+        <a class="btn ghost small" href="http://${esc(p.host)}:${port}" target="_blank" rel="noopener">Open</a></div>`;
     });
+    html += `<p class="desc" style="margin-top:8px">“Tune cam” auto-adjusts the camera for ball detection — rack the balls and light the table as you would to play first. Watch the sensor's logs; streaming resumes when it finishes.</p>`;
     html += `</div>`;
   }
 
@@ -115,6 +118,14 @@ function renderHome() {
 }
 
 window.gotoTab = (t) => { document.querySelector(`.tab[data-tab="${t}"]`).click(); };
+window.tunePeerCamera = async (host, port) => {
+  try {
+    await fetch(`http://${host}:${port}/api/action/start`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "autotune_camera" }) });
+    toast("Camera tuning started — watch the sensor's logs (~1 min)");
+  } catch (e) { toast("Could not reach " + host, true); }
+};
 window.doStop = async () => { await post("/api/action/stop"); toast("Stopped"); await refresh(); render(); };
 window.doRestart = async () => { await post("/api/action/restart"); toast("Restarted"); await refresh(); render(); };
 window.showLogs = () => {
