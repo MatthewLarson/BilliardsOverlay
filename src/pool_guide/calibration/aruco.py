@@ -85,25 +85,50 @@ def _draw_marker(adict, marker_id: int, size: int) -> np.ndarray:
     return cv2.cvtColor(tile, cv2.COLOR_GRAY2BGR)
 
 
-def detect_marker_centers(image_bgr: np.ndarray, dict_name: str):
-    """Detect markers in a camera frame. Return {id: (cx, cy)} camera px."""
-    adict = get_aruco_dict(dict_name)
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+def _make_params():
+    """Detector parameters tuned for faint, low-contrast, unevenly-lit markers
+    (projected via a dim/off-axis projector and seen by an overhead camera)."""
+    p = cv2.aruco.DetectorParameters() if hasattr(cv2.aruco, "ArucoDetector") \
+        else cv2.aruco.DetectorParameters_create()
+    # Wide adaptive-threshold window range copes with bright vs washed-out regions.
+    for name, val in (("adaptiveThreshWinSizeMin", 3), ("adaptiveThreshWinSizeMax", 55),
+                      ("adaptiveThreshWinSizeStep", 8), ("minMarkerPerimeterRate", 0.02),
+                      ("maxMarkerPerimeterRate", 4.0), ("polygonalApproxAccuracyRate", 0.06),
+                      ("minOtsuStdDev", 3.0), ("perspectiveRemoveIgnoredMarginPerCell", 0.15),
+                      ("errorCorrectionRate", 0.6)):
+        try:
+            setattr(p, name, val)
+        except Exception:                       # pragma: no cover - version differences
+            pass
+    return p
 
+
+def _detect_on(gray, adict, params, out: dict):
     if hasattr(cv2.aruco, "ArucoDetector"):
-        params = cv2.aruco.DetectorParameters()
-        detector = cv2.aruco.ArucoDetector(adict, params)
-        corners, ids, _ = detector.detectMarkers(gray)
+        corners, ids, _ = cv2.aruco.ArucoDetector(adict, params).detectMarkers(gray)
     else:  # pragma: no cover - legacy OpenCV
-        params = cv2.aruco.DetectorParameters_create()
         corners, ids, _ = cv2.aruco.detectMarkers(gray, adict, parameters=params)
-
-    centers: dict[int, tuple[float, float]] = {}
     if ids is None:
-        return centers
+        return
     for mid, quad in zip(ids.flatten(), corners):
         c = quad.reshape(4, 2).mean(axis=0)
-        centers[int(mid)] = (float(c[0]), float(c[1]))
+        out.setdefault(int(mid), (float(c[0]), float(c[1])))
+
+
+def detect_marker_centers(image_bgr: np.ndarray, dict_name: str):
+    """Detect markers in a camera frame. Return {id: (cx, cy)} camera px.
+
+    Runs detection on both the raw grayscale and a CLAHE-enhanced version and
+    unions the results -- faint markers that the raw image misses often show up
+    once local contrast is boosted."""
+    adict = get_aruco_dict(dict_name)
+    params = _make_params()
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    enhanced = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray)
+
+    centers: dict[int, tuple[float, float]] = {}
+    _detect_on(enhanced, adict, params, centers)
+    _detect_on(gray, adict, params, centers)
     return centers
 
 
