@@ -39,9 +39,12 @@ def score_separation(frame_bgr: np.ndarray, vision_cfg) -> dict:
     else:
         contrast = 0.0
 
-    # Prefer the felt sitting in a comfortable mid-tone band (not too dark/bright).
-    exposure_pen = abs(felt_v - 120.0) / 120.0
+    # Keeping the felt in a comfortable mid-tone DOMINATES: a well-exposed felt is
+    # required for table/ball segmentation. Ball contrast is a capped bonus so the
+    # tuner doesn't crush the felt to near-black just to maximise contrast.
+    exposure_pen = abs(felt_v - 115.0) / 115.0
 
-    score = (n * 6.0) + (contrast * 0.15) - (clip * 120.0) - (exposure_pen * 25.0)
+    score = (-exposure_pen * 60.0) - (clip * 150.0) \
+        + (min(contrast, 120.0) * 0.08) + (min(n, 12) * 3.0)
     return {"score": float(score), "balls": n, "contrast": contrast,
             "felt_v": felt_v, "felt_s": felt_s, "clip": clip}
