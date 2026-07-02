@@ -27,3 +27,15 @@ def test_cast_serves_page_and_frame():
         assert disp.poll_key() == -1
     finally:
         disp.close()
+
+
+def test_all_display_sinks_support_context_manager():
+    # Regression: NetworkDisplay/LocalDisplay/CastDisplay must inherit DisplaySink
+    # so `with open_sink(cfg) as sink:` works (calibration used it and crashed).
+    from pool_guide.display.base import DisplaySink
+    from pool_guide.display.local import LocalDisplay
+    from pool_guide.display.network_sink import NetworkDisplay
+    from pool_guide.display.cast import CastDisplay
+    for cls in (LocalDisplay, NetworkDisplay, CastDisplay):
+        assert issubclass(cls, DisplaySink)
+        assert hasattr(cls, "__enter__") and hasattr(cls, "__exit__")

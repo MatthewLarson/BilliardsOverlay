@@ -11,11 +11,12 @@ import cv2
 import numpy as np
 
 from ..config import Config
+from .base import DisplaySink
 
 WINDOW = "pool-guide"
 
 
-class LocalDisplay:
+class LocalDisplay(DisplaySink):
     def __init__(self, cfg: Config, fullscreen: bool):
         self.w = cfg.display.width
         self.h = cfg.display.height

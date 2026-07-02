@@ -110,10 +110,27 @@ function renderHome() {
 window.gotoTab = (t) => { document.querySelector(`.tab[data-tab="${t}"]`).click(); };
 window.doStop = async () => { await post("/api/action/stop"); toast("Stopped"); refresh(); };
 window.doRestart = async () => { await post("/api/action/restart"); toast("Restarted"); refresh(); };
-window.showLogs = async () => {
-  try { const d = await getJSON("/api/logs"); view.insertAdjacentHTML("afterbegin",
-    `<div class="card"><div class="row"><h3>Recent output</h3><button class="btn ghost small" onclick="this.closest('.card').remove()">Close</button></div><pre class="log">${esc((d.lines || []).join("\n") || "(no output)")}</pre></div>`);
-  } catch (e) { toast(e.message, true); }
+window.showLogs = () => {
+  // A modal on <body> so the 3.5s status poll (which re-renders #view) can't wipe it.
+  if (document.getElementById("logsModal")) return;
+  const m = document.createElement("div");
+  m.id = "logsModal"; m.className = "modal";
+  m.innerHTML = `<div class="modal-card"><div class="row"><h3>Recent output</h3>
+    <button class="btn ghost small" onclick="closeLogs()">Close</button></div>
+    <pre class="log" id="logsPre">loading…</pre></div>`;
+  m.addEventListener("click", (e) => { if (e.target === m) closeLogs(); });
+  document.body.appendChild(m);
+  const load = async () => {
+    try { const d = await getJSON("/api/logs"); const p = document.getElementById("logsPre");
+      if (p) p.textContent = (d.lines || []).join("\n") || "(no output)"; } catch (e) {}
+  };
+  load();
+  showLogs._t = setInterval(load, 2000);
+};
+window.closeLogs = () => {
+  clearInterval(showLogs._t);
+  const m = document.getElementById("logsModal");
+  if (m) m.remove();
 };
 
 /* ---------- PLAY / TRAIN (action cards) ---------- */
@@ -178,7 +195,7 @@ function renderCalibrate() {
   const running = STATE.running;
 
   let html = `<div class="card">
-    <h3>Calibration</h3>
+    <div class="row"><h3>Calibration</h3><button class="btn ghost small" onclick="showLogs()">Logs</button></div>
     <p class="desc">${s3 ? "You're calibrated. Re-run any step below if the rig moved." : "Follow the steps to line the projector up with your table."}</p>`;
 
   // Step 1 — nodes

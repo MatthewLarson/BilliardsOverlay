@@ -29,6 +29,7 @@ import cv2
 import numpy as np
 
 from ..config import Config
+from .base import DisplaySink
 
 _PAGE = """<!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
@@ -49,7 +50,7 @@ def _lan_ip() -> str:
         s.close()
 
 
-class CastDisplay:
+class CastDisplay(DisplaySink):
     def __init__(self, cfg: Config):
         self.w = cfg.display.width
         self.h = cfg.display.height

@@ -7,9 +7,10 @@ import numpy as np
 
 from ..config import Config
 from ..net.protocol import Sender
+from .base import DisplaySink
 
 
-class NetworkDisplay:
+class NetworkDisplay(DisplaySink):
     def __init__(self, cfg: Config):
         self._quality = cfg.network.jpeg_quality
         self._i = 0
