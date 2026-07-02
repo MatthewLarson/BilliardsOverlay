@@ -23,8 +23,10 @@ from ..capture import camera_controls
 from ..config import load_config, write_config
 from ..vision.tuning import score_separation
 
-TUNE_ORDER = ["exposure_time_absolute", "gain", "brightness",
-              "contrast", "saturation", "gamma"]
+# Keep auto-exposure ON (so the felt stays well-lit like it does while streaming)
+# and tune only the image-processing controls. Forcing manual exposure blacks out
+# the frame if the frozen exposure is short.
+TUNE_ORDER = ["brightness", "contrast", "saturation", "gamma"]
 
 
 def _open(idx):
@@ -46,7 +48,7 @@ def _evaluate(cap, vision_cfg, avg=2):
     scores = []
     info = None
     for _ in range(avg):
-        f = _grab(cap, flush=3)
+        f = _grab(cap, flush=6)
         if f is None:
             continue
         info = score_separation(f, vision_cfg)
@@ -78,10 +80,17 @@ def main(argv=None) -> int:
         print(f"Could not open camera {idx}. Is the sensor node still using it?")
         return 2
 
-    # Stable base: manual exposure + fixed white balance so scoring is repeatable.
-    camera_controls.set_controls(device, {"auto_exposure": 1, "white_balance_automatic": 1})
-    time.sleep(0.3)
+    # Keep auto-exposure + auto white-balance so the felt stays lit; reset the
+    # image-processing controls to camera defaults for a clean baseline.
+    base_ctrls = {"auto_exposure": 3, "white_balance_automatic": 1}
     ranges = camera_controls.list_control_ranges(device)
+    for name in TUNE_ORDER:
+        if name in ranges and "default" in ranges[name]:
+            base_ctrls[name] = ranges[name]["default"]
+    camera_controls.set_controls(device, base_ctrls)
+    for _ in range(25):        # warm up: let auto-exposure adapt to the room
+        cap.read()
+    time.sleep(0.8)
     if not ranges:
         print("No V4L2 controls found; cannot tune.")
         return 3
@@ -93,8 +102,13 @@ def main(argv=None) -> int:
         f = _grab(cap)
         if f is not None:
             cv2.imwrite(f"{args.save_images}/before.jpg", f)
+    if base["score"] <= -1e5:
+        print("Baseline sees no felt (dark frame / camera not seeing the table). "
+              "Make sure the table is lit and balls are racked, then retry. Not saving.")
+        cap.release()
+        return 4
 
-    controls: dict[str, int] = {"auto_exposure": 1}
+    controls: dict[str, int] = dict(base_ctrls)
     for p in range(args.passes):
         for name in TUNE_ORDER:
             if name not in ranges:
@@ -122,13 +136,13 @@ def main(argv=None) -> int:
             cv2.imwrite(f"{args.save_images}/after.jpg", f)
     cap.release()
 
-    if final["score"] >= base["score"]:
+    if final["score"] > -1e5 and final["score"] >= base["score"]:
         cfg.capture.controls = controls
         path = args.config or "config.yaml"
         write_config(cfg, path)
         print(f"Saved tuned controls to {path}")
     else:
-        print("Tuning did not improve the score; leaving config unchanged.")
+        print("Tuning did not improve a valid score; leaving config unchanged.")
     return 0
 
 
