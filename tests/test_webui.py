@@ -53,6 +53,21 @@ def test_node_handles_none_config():
     assert n.status()["role"] in ("standalone", "brain", "sensor")
 
 
+def test_run_server_with_none_config(tmp_path, monkeypatch):
+    # Exactly what the systemd service does: run_server(None). Must not crash on
+    # Path(None); resolves PROJECT_ROOT/config.yaml.
+    import pool_guide.webui.server as srv
+    monkeypatch.setattr(srv, "PROJECT_ROOT", tmp_path)
+    (tmp_path / "config.yaml").write_text(
+        "mode: standalone\nwebui:\n  host: 127.0.0.1\n  port: 0\n", encoding="utf-8")
+    httpd, node, stop = srv.run_server(None, block=False)
+    try:
+        assert node.status()["role"] == "standalone"
+    finally:
+        stop.set()
+        httpd.shutdown()
+
+
 def test_node_role():
     cfg = load_config()
     cfg.mode = "standalone"

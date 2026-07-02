@@ -475,7 +475,7 @@ def _register_loop(node: Node, stop: threading.Event):
 
 def run_server(config_path, block: bool = True):
     """Start the control panel. Returns (httpd, node, stop_event)."""
-    node = Node(Path(config_path))
+    node = Node(config_path)          # Node resolves a None path to the default
     Handler.node = node
     cfg = node.cfg()
     httpd = ThreadingHTTPServer((cfg.webui.host, cfg.webui.port), Handler)
